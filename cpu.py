@@ -8,10 +8,19 @@ PC = 32
 # 64K at 0x80000000
 memory = b'\x00' * 0x10000
 
+from enum import Enum
+class Ops(Enum):
+    LUI   = 0b0110111
+    AUIPC = 0b0010111
+    JAL   = 0b1101111
+    JALR  = 0b1100111
+    BEQ   = 0b1100011
 
+
+# write segment
 def ws(dat, addr):
     global memory
-    print(hex(addr), len(dat), len(memory))
+    print(hex(addr), len(dat))
     addr -= 0x80000000
     assert addr >= 0 and addr < len(memory)           
     memory = memory[:addr] + dat + memory[addr+len(dat):]
@@ -23,7 +32,8 @@ def r32(addr):
     addr -= 0x80000000
     # check addres validity
     assert addr >= 0 and addr < len(memory)           
-    return struct.unpack("I", memory[addr:addr+4])[0]
+    return struct.unpack("<I", memory[addr:addr+4])[0]
+
 
 def dump():
     pp = []
@@ -35,10 +45,16 @@ def dump():
     print(''.join(pp))
 
 
+def gibi(ins, s, e):
+    return (ins >> e) & ((1 << (s-e+1)) - 1)
+
+
 def step():
     # fetch instruction
     ins = r32(regfile[PC])
-    
+    opcode = gibi(ins, 6, 0) 
+    print(hex(ins), bin(opcode))
+
     # read register and decode the instruction
     dump()
 
@@ -54,7 +70,7 @@ def out_section(filename, elf):
 
 
 if __name__  == "__main__":
-    for x in glob.glob("riscv-tests/isa/rv32ui-*"):
+    for x in glob.glob("riscv-tests/isa/rv32ui-v-add"):
         if x.endswith(".dump"):
             continue
         with open(x, 'rb') as f:
@@ -67,3 +83,4 @@ if __name__  == "__main__":
             regfile[PC] = 0x80000000
             while step():
                 pass
+            break

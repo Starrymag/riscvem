@@ -10,20 +10,34 @@ memory = b'\x00' * 0x10000
 
 from enum import Enum
 class Ops(Enum):
-    LUI   = 0b0110111  
-    AUIPC = 0b0010111
-    JAL   = 0b1101111
-    JALR  = 0b1100111
+    LUI    = 0b0110111  
+    AUIPC  = 0b0010111
+    JAL    = 0b1101111
+    JALR   = 0b1100111
 
-    BEQ = BNE = BLT = BGE = BLTU = BGEU = 0b1100011
-    LB = LH = LW = LBU = LHU = 0b0000011 
-    SB = SH = SW = 0b0100011
+    BRANCH = 0b1100011
+    LOAD   = 0b0000011 
+    STORE  = 0b0100011  
     
-    ADDI = SLTI = SLTIU = XORI = ORI = ANDI = SLLI = SRLI = SRAI = 0b0010011
-    ADD = SLT = SLTU = XOR = OR = AND = SLL = SRL = SRA = SUB = 0b0110011
+    IMM    = 0b0010011  # all *I instruction
+    OP     = 0b0110011  # ADD, SUB...
+ 
+    MISC  = 0b0001111
+    ECALL  = EBREAK = 0b1110011
 
-    FENCE = 0b0001111
-    ECALL = EBREAK = 0b1110011
+
+class Funct3(Enum):
+    ADD = ADDI = SUB = 0b000 
+    SLLI = SLL = 0b001
+    SLTI = SLT = 0b010
+    SLTIU = SLTU = 0b011
+    
+    XORI = XOR = 0b100
+    SRLI = SRL = SRAI = SRA = 0b101
+    ORI = OR = 0b110
+    ANDI = AND = 0b111
+
+    
 
 
 # write segment
@@ -54,25 +68,46 @@ def dump():
     print(''.join(pp))
 
 
-def gibi(ins, s, e):
-    return (ins >> e) & ((1 << (s-e+1)) - 1)
+def sign_extend(num, l):
+    if num >> (l - 1) == 1:
+        return - ((1 << l) - num)
+    else:
+        return num
+
+
+
 
 
 def step():
     # fetch instruction
     ins = r32(regfile[PC])
+    
+    def gibi(s, e):
+        return (ins >> e) & ((1 << (s-e+1)) - 1)
+
 
     # Instruction decode
-    opcode = Ops(gibi(ins, 6, 0))
+    opcode = Ops(gibi(6, 0))
     print("%x %8x %r" % (regfile[PC], ins, opcode))
     
     if opcode == Ops.JAL:
-        rd = gibi(ins, 11, 7)
+        # J-type instruction
+        rd = gibi(11, 7)
         assert rd == 0
-        # offset 
-        imm_j = gibi(ins, 31, 30) << 20 | gibi(ins, 30, 21) << 1 | gibi(ins, 21, 20) << 11 | gibi(ins, 20, 12) << 12
+        # calculate offset 
+        imm_j = gibi(31, 30) << 20 | gibi(30, 21) << 1 | gibi(21, 20) << 11 | gibi(20, 12) << 12
         regfile[PC] += imm_j
         return True
+    elif opcode == Ops.IMM:
+        # I-type instruction
+        funct3 = Funct3(gibi(14, 12))
+        rd = gibi(11, 7)
+        rs1 = gibi(19, 15)
+        # TODO Implement sign extend
+        imm = gibi(31, 20)
+        # if funct3 == Funct3.ADDI:
+            # regfile[rd] = regfile[rs1] + imm 
+
 
 
     # execute
@@ -93,12 +128,14 @@ if __name__  == "__main__":
             continue
         with open(x, 'rb') as f:
             print("test", x)
+            print("LOADED SEGMENTS:")
             e = ELFFile(f)
             for s in e.iter_segments():
                 # PAY ATTENTION ON PT_LOAD
                 if s.header.p_type == 'PT_LOAD':
                     ws(s.data(), s.header.p_paddr)
             regfile[PC] = 0x80000000
+            print("\nSTART SIMULATING")
             while step():
                 pass
             break

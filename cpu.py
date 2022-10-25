@@ -1,6 +1,7 @@
 import struct 
 import glob
 from elftools.elf.elffile import ELFFile
+from enum import Enum
 
 regfile = [0]*33
 PC = 32
@@ -8,7 +9,7 @@ PC = 32
 # 64K at 0x80000000
 memory = b'\x00' * 0x10000
 
-from enum import Enum
+
 class Ops(Enum):
     LUI    = 0b0110111  
     AUIPC  = 0b0010111
@@ -18,26 +19,24 @@ class Ops(Enum):
     BRANCH = 0b1100011
     LOAD   = 0b0000011 
     STORE  = 0b0100011  
-    
+
     IMM    = 0b0010011  # all *I instruction
     OP     = 0b0110011  # ADD, SUB...
- 
+
     MISC  = 0b0001111
     ECALL  = EBREAK = 0b1110011
 
 
 class Funct3(Enum):
-    ADD = ADDI = SUB = 0b000 
+    ADD = ADDI = SUB = 0b000
     SLLI = SLL = 0b001
     SLTI = SLT = 0b010
     SLTIU = SLTU = 0b011
-    
+
     XORI = XOR = 0b100
     SRLI = SRL = SRAI = SRA = 0b101
     ORI = OR = 0b110
     ANDI = AND = 0b111
-
-    
 
 
 # write segment
@@ -45,7 +44,7 @@ def ws(dat, addr):
     global memory
     print(hex(addr), len(dat))
     addr -= 0x80000000
-    assert addr >= 0 and addr < len(memory)           
+    assert addr >= 0 and addr < len(memory) 
     memory = memory[:addr] + dat + memory[addr+len(dat):]
 
 
@@ -54,7 +53,7 @@ def r32(addr):
     global memory
     addr -= 0x80000000
     # check addres validity
-    assert addr >= 0 and addr < len(memory)           
+    assert addr >= 0 and addr < len(memory)
     return struct.unpack("<I", memory[addr:addr+4])[0]
 
 
@@ -62,40 +61,37 @@ def dump():
     pp = []
     for i in range(32):
         if i != 0 and i % 8 == 0:
-            pp +="\n"
+            pp += "\n"
         pp += " %3s: +%08x" % ("x%d" % i, regfile[i])
     pp += "\n PC: %08x" % regfile[PC]
     print(''.join(pp))
 
 
-def sign_extend(num, l):
-    if num >> (l - 1) == 1:
-        return - ((1 << l) - num)
+def sign_extend(num, length):
+    if num >> (length - 1) == 1:
+        return - ((1 << length) - num)
     else:
         return num
-
-
-
 
 
 def step():
     # fetch instruction
     ins = r32(regfile[PC])
-    
+
     def gibi(s, e):
         return (ins >> e) & ((1 << (s-e+1)) - 1)
-
 
     # Instruction decode
     opcode = Ops(gibi(6, 0))
     print("%x %8x %r" % (regfile[PC], ins, opcode))
-    
+
     if opcode == Ops.JAL:
         # J-type instruction
         rd = gibi(11, 7)
         assert rd == 0
         # calculate offset 
-        imm_j = gibi(31, 30) << 20 | gibi(30, 21) << 1 | gibi(21, 20) << 11 | gibi(20, 12) << 12
+        imm_j = gibi(31, 30) << 20 | gibi(30, 21) << 1 | gibi(21, 20) << 11 | \
+            gibi(20, 12) << 12
         regfile[PC] += imm_j
         return True
     elif opcode == Ops.IMM:
@@ -103,12 +99,10 @@ def step():
         funct3 = Funct3(gibi(14, 12))
         rd = gibi(11, 7)
         rs1 = gibi(19, 15)
-        # TODO Implement sign extend
+        # TODO Use sign extend
         imm = gibi(31, 20)
         # if funct3 == Funct3.ADDI:
             # regfile[rd] = regfile[rs1] + imm 
-
-
 
     # execute
     # write the result
@@ -122,7 +116,7 @@ def out_section(filename, elf):
         print(section.name, sep=" ")
 
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     for x in glob.glob("riscv-tests/isa/rv32ui-v-add"):
         if x.endswith(".dump"):
             continue
@@ -139,4 +133,3 @@ if __name__  == "__main__":
             while step():
                 pass
             break
-

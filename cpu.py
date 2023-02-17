@@ -1,4 +1,4 @@
-import struct 
+import struct
 import glob
 from elftools.elf.elffile import ELFFile
 from enum import Enum
@@ -11,20 +11,20 @@ memory = b'\x00' * 0x10000
 
 
 class Ops(Enum):
-    LUI    = 0b0110111  
-    AUIPC  = 0b0010111
-    JAL    = 0b1101111
-    JALR   = 0b1100111
+    LUI    = 0b0110111  # U type
+    AUIPC  = 0b0010111  # U type
+    JAL    = 0b1101111  # J type
+    JALR   = 0b1100111  # I type
 
-    BRANCH = 0b1100011
-    LOAD   = 0b0000011 
-    STORE  = 0b0100011  
+    BRANCH = 0b1100011  # B type 
+    LOAD   = 0b0000011  # also I type, but load
+    STORE  = 0b0100011  # S type
 
-    IMM    = 0b0010011  # all *I instruction
-    OP     = 0b0110011  # ADD, SUB...
+    IMM    = 0b0010011  # I type
+    OP     = 0b0110011  # R type
 
-    MISC  = 0b0001111
-    ECALL  = EBREAK = 0b1110011
+    MISC  = 0b0001111   # 
+    ECALL  = EBREAK = 0b1110011  # also I type
 
 
 class Funct3(Enum):
@@ -44,7 +44,7 @@ def ws(dat, addr):
     global memory
     print(hex(addr), len(dat))
     addr -= 0x80000000
-    assert addr >= 0 and addr < len(memory) 
+    assert addr >= 0 and addr < len(memory)
     memory = memory[:addr] + dat + memory[addr+len(dat):]
 
 
@@ -84,12 +84,11 @@ def step():
     # Instruction decode
     opcode = Ops(gibi(6, 0))
     print("%x %8x %r" % (regfile[PC], ins, opcode))
-
     if opcode == Ops.JAL:
         # J-type instruction
         rd = gibi(11, 7)
         assert rd == 0
-        # calculate offset 
+        # calculate offset
         imm_j = gibi(31, 30) << 20 | gibi(30, 21) << 1 | gibi(21, 20) << 11 | \
             gibi(20, 12) << 12
         regfile[PC] += imm_j
@@ -100,9 +99,19 @@ def step():
         rd = gibi(11, 7)
         rs1 = gibi(19, 15)
         # TODO Use sign extend
-        imm = gibi(31, 20)
-        # if funct3 == Funct3.ADDI:
-            # regfile[rd] = regfile[rs1] + imm 
+        imm_i = gibi(31, 20)
+        if funct3 == Funct3.ADDI:
+            regfile[rd] = regfile[rs1] + imm_i
+        else:
+            raise Exception("write %r" % funct3)
+        regfile[PC] += 4
+        return True
+    elif opcode == Ops.AUIPC:
+        # U-type of instruction
+        rd = gibi(11, 7)
+        imm_u = gibi(31, 12)
+        print("Dist: x%x IMM: %x" % (rd, imm_u))
+        regfile[rd] = regfile[PC] + imm_u
 
     # execute
     # write the result

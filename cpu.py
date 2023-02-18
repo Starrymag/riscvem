@@ -10,6 +10,20 @@ PC = 32
 memory = b'\x00' * 0x10000
 
 
+class Regfile:
+    def __init__(self):
+        self.regs = [0]*33
+
+    def __getitem__(self, key):
+        return self.regs[key]
+
+    def __setitem__(self, key, value):
+        # dont write to x0 register
+        if key == 0:
+            return
+        self.regs[key] = value & 0xFFFFFFFF
+
+
 class Ops(Enum):
     LUI    = 0b0110111  # U type
     AUIPC  = 0b0010111  # U type

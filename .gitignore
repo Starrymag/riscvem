@@ -1,4 +1,6 @@
 .*.swp
-riscv-tests
+
+riscv-tests/
+
 run
 out

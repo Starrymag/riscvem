@@ -132,7 +132,7 @@ def step():
         imm_i = sign_extend(gibi(31, 20), 12)
         offset = regfile[rs1] + imm_i
         # set lsb to zero
-        offset = 2 * (offset // 2)
+        offset = (offset // 2) * 2
         regfile[rd] = regfile[PC] + 4
         regfile[PC] = offset
         print(offset)
@@ -148,6 +148,10 @@ def step():
             regfile[rd] = regfile[rs1] + imm_i
         elif funct3 == Funct3.SLLI:
             regfile[rd] = regfile[rs1] << imm_i
+        elif funct3 == Funct3.SRLI:
+            regfile[rd] = regfile[rs1] >> imm_i
+        elif funct3 == Funct3.ORI:
+            regfile[rd] = regfile[rs1] | imm_i
         else:
             raise Exception("write %r" % funct3)
         regfile[PC] += 4
@@ -164,8 +168,46 @@ def step():
         regfile[PC] += 4
         return True
 
+    elif opcode == Ops.LUI:
+        # U-type
+        rd = gibi(11, 7)
+        imm_u = gibi(31, 12)
+        # PAY ATTENTION to bit shift
+        imm_u = imm_u << 12
+        regfile[rd] = imm_u
+        regfile[PC] += 4
+        return True
+
     elif opcode == Ops.SYSTEM:
         pass
+
+    elif opcode == Ops.BRANCH:
+        # B-type of instruction
+        funct3 = Funct3(gibi(14, 12))
+        rs1 = gibi(19, 15)
+        rs2 = gibi(24, 20)
+        offset = sign_extend((gibi(32, 31) << 12) | (gibi(30, 25) << 5)
+                             | (gibi(11, 8) << 1) | (gibi(8, 7) << 11), 12)
+        if funct3 == funct3.BNE:
+            if regfile[rs1] != regfile[rs2]:
+                regfile[PC] += offset
+                return True
+        else:
+            raise Exception("wirte funct3 %r" % funct3)
+
+    elif opcode == Ops.LOAD:
+        # rd = gibi(11, 7)
+        # rs1 = gibi(19, 15)
+        pass
+
+    elif opcode == Ops.STORE:
+        # S type
+        rs1 = gibi(19, 15)
+        rs2 = gibi(24, 20)
+        funct3 = gibi(14, 12)
+        imm_s = sign_extend(((gibi(31, 25) << 5) | gibi(11, 7)), 12)
+        addr = rs1 + imm_s
+        value = regfile[rs2]
 
     elif opcode == Ops.OP:
         rd = gibi(11, 7)
@@ -175,6 +217,8 @@ def step():
         funct7 = Funct7(gibi(31, 25))
         if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
             regfile[rd] = regfile[rs1] + regfile[rs2]
+        elif funct3 == Funct3.OR and funct7 == Funct7.OR:
+            regfile[rd] = regfile[rs1] | regfile[rs2]
         else:
             raise Exception("wirte funct3 %r, funct7 %r" % (funct3, funct7))
     else:

@@ -113,7 +113,7 @@ def sign_extend(num: int, length: int) -> int:
 
 
 # execute one cpu cycle
-def step():
+def step() -> bool:
     # fetch instruction
     ins = r32(regfile[PC])
 
@@ -150,7 +150,6 @@ def step():
         offset = (offset // 2) * 2
         regfile[rd] = regfile[PC] + 4
         regfile[PC] = offset
-        print(offset)
         return True
 
     elif opcode == Ops.IMM:
@@ -202,18 +201,26 @@ def step():
         rs1 = gibi(19, 15)
         rs2 = gibi(24, 20)
         offset = sign_extend((gibi(32, 31) << 12) | (gibi(30, 25) << 5)
-                             | (gibi(11, 8) << 1) | (gibi(8, 7) << 11), 12)
-        if funct3 == funct3.BNE:
-            if regfile[rs1] != regfile[rs2]:
-                regfile[PC] += offset
-                return True
+                             | (gibi(11, 8) << 1) | (gibi(8, 7) << 11), 13)
+        cond = False
+        if funct3 == funct3.BEQ:
+            cond = regfile[rs1] == regfile[rs2]
+        elif funct3 == funct3.BNE:
+            cond = regfile[rs1] != regfile[rs2]
         else:
             raise Exception("wirte funct3 %r" % funct3)
+        if cond:
+            regfile[PC] += offset
+            return True
 
     elif opcode == Ops.LOAD:
-        # rd = gibi(11, 7)
-        # rs1 = gibi(19, 15)
-        pass
+        # I-type
+        rd = gibi(11, 7)
+        rs1 = gibi(19, 15)
+        funct3 = Funct3(gibi(14, 12))
+        imm_i = sign_extend(gibi(31, 20), 12)
+        addr = regfile[rs1] + imm_i
+        print("LOAD %8x" % addr)
 
     elif opcode == Ops.STORE:
         # S type
@@ -223,8 +230,10 @@ def step():
         imm_s = sign_extend(((gibi(31, 25) << 5) | gibi(11, 7)), 12)
         addr = rs1 + imm_s
         value = regfile[rs2]
+        print("STORE %8x = %x" % (addr, value))
 
     elif opcode == Ops.OP:
+        # R-type
         rd = gibi(11, 7)
         rs1 = gibi(19, 15)
         rs2 = gibi(24, 20)

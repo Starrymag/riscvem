@@ -208,12 +208,23 @@ def step() -> bool:
         funct3 = Funct3(gibi(14, 12))
         rd = gibi(11, 7)
         rs1 = gibi(19, 15)
-        if funct3 == Funct3.ECALL:
-            if regfile[3] > 1:
-                raise Exception("ERROR IN TEST")
-            elif regfile[3] == 1:
-                # end current test
-                return False
+        csr = gibi(31, 20)
+        if funct3 == Funct3.CSRRW:
+            print("CSRRW", regfile[3], csr)
+        if funct3 == Funct3.CSRRC:
+            print("CSRRC", regfile[3], csr)
+
+        elif funct3 == Funct3.ECALL:
+            print("ecall", regfile[3], csr)
+            if regfile[regnames.index("a7")] == 93:
+                if regfile[regnames.index("a0")] == 0:
+                    print("Test passes")
+                    return False
+                else:
+                    raise Exception("ERROR IN TEST")
+        else:
+            # raise Exception("more CSRs funct3: %r - %s" % (funct3, bin(funct3.value)))
+            pass
 
     elif opcode == Ops.MISC:
         pass
@@ -226,13 +237,17 @@ def step() -> bool:
         offset = sign_extend((gibi(32, 31) << 12) | (gibi(30, 25) << 5)
                              | (gibi(11, 8) << 1) | (gibi(8, 7) << 11), 13)
         cond = False
-        if funct3 == funct3.BEQ:
+        if funct3 == Funct3.BEQ:
             cond = regfile[rs1] == regfile[rs2]
-        elif funct3 == funct3.BNE:
+        elif funct3 == Funct3.BNE:
             cond = regfile[rs1] != regfile[rs2]
-        elif funct3 == funct3.BLT:
+        elif funct3 == Funct3.BLT:
+            cond = sign_extend(regfile[rs1], 32) < sign_extend(regfile[rs2], 32)
+        elif funct3 == Funct3.BLTU:
             cond = regfile[rs1] < regfile[rs2]
-        elif funct3 == funct3.BGE:
+        elif funct3 == Funct3.BGE:
+            cond = sign_extend(regfile[rs1], 32) >= sign_extend(regfile[rs2], 32)
+        elif funct3 == Funct3.BGEU:
             cond = regfile[rs1] >= regfile[rs2]
         else:
             raise Exception("wirte funct3 %r" % funct3)

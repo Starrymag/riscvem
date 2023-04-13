@@ -7,6 +7,11 @@ from enum import Enum
 # 32 - index in Regfile
 PC = 32
 
+regnames = ["zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1"] +\
+            ["a%d" % i for i in range(8)] +\
+            ["s%d" % i for i in range(2, 12)] +\
+            ["t3", "t4", "t5", "t6", "PC"]
+
 # 64K at 0x80000000
 memory = b'\x00' * 0x10000
 
@@ -66,6 +71,14 @@ class Funct3(Enum):
     BLTU = 0b110
     BGEU = 0b111
 
+    ECALL = 0b000
+    CSRRW = 0b001
+    CSRRS = 0b010
+    CSRRC = 0b011
+    CSRRWI = 0b101
+    CSRRSI = 0b110
+    CSRRCI = 0b111
+
 
 # all Funct7 field codes
 class Funct7(Enum):
@@ -95,11 +108,11 @@ def r32(addr: int) -> tuple:
 # dump regs values from regfile
 def dump() -> None:
     pp = []
-    for i in range(32):
+    for i, name in enumerate(regnames):
         if i != 0 and i % 8 == 0:
             pp += "\n"
-        pp += " %3s: +%08x" % ("x%d" % i, regfile[i])
-    pp += "\n PC: %08x" % regfile[PC]
+        pp += " %4s: +%08x" % (name, regfile[i])
+    # pp += "\n PC: %08x" % regfile[PC]
     print(''.join(pp))
 
 
@@ -128,7 +141,6 @@ def step() -> bool:
     # Instruction decode
     opcode = Ops(gibi(6, 0))
     print("%x %8x %r" % (regfile[PC], ins, opcode))
-
     # execute
     if opcode == Ops.JAL:
         # J-type instruction
@@ -193,6 +205,17 @@ def step() -> bool:
         return True
 
     elif opcode == Ops.SYSTEM:
+        funct3 = Funct3(gibi(14, 12))
+        rd = gibi(11, 7)
+        rs1 = gibi(19, 15)
+        if funct3 == Funct3.ECALL:
+            if regfile[3] > 1:
+                raise Exception("ERROR IN TEST")
+            elif regfile[3] == 1:
+                # end current test
+                return False
+
+    elif opcode == Ops.MISC:
         pass
 
     elif opcode == Ops.BRANCH:
@@ -207,6 +230,10 @@ def step() -> bool:
             cond = regfile[rs1] == regfile[rs2]
         elif funct3 == funct3.BNE:
             cond = regfile[rs1] != regfile[rs2]
+        elif funct3 == funct3.BLT:
+            cond = regfile[rs1] < regfile[rs2]
+        elif funct3 == funct3.BGE:
+            cond = regfile[rs1] >= regfile[rs2]
         else:
             raise Exception("wirte funct3 %r" % funct3)
         if cond:
@@ -261,7 +288,7 @@ def out_section(filename, elf):
 
 
 if __name__ == "__main__":
-    for x in glob.glob("riscv-tests/isa/rv32ui-v-add"):
+    for x in glob.glob("riscv-tests/isa/rv32ui-p-add"):
         if x.endswith(".dump"):
             continue
         with open(x, 'rb') as f:

@@ -1,5 +1,3 @@
-from os import register_at_fork
-import re
 import struct
 import glob
 from elftools.elf.elffile import ELFFile

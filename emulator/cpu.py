@@ -338,9 +338,9 @@ def step() -> bool:
         # print("STORE %8x = %x + %x" % (addr, imm_s, rs1))
         if funct3 == Funct3.SB:
             ws(struct.pack("<B", value & 0xFF), addr)
-        if funct3 == Funct3.SH:
+        elif funct3 == Funct3.SH:
             ws(struct.pack("<H", value & 0xFFFF), addr)
-        if funct3 == Funct3.SW:
+        elif funct3 == Funct3.SW:
             ws(struct.pack("<I", value & 0xFFFFFFFF), addr)
 
     elif opcode == Ops.OP:
@@ -372,9 +372,7 @@ if __name__ == "__main__":
         reset()
         if x.endswith(".dump"):
             continue
-        # ignore non arethmetic ops
-        if "fence_i" in x:
-            continue
+        # ignore some files
         with open(x, 'rb') as f:
             print("test", x)
             # print("LOADED SEGMENTS:")

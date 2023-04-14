@@ -79,9 +79,9 @@ class Funct3(Enum):
     BLTU = 0b110
     BGEU = 0b111
 
-    LB = 0b000
-    LH = 0b001
-    LW = 0b010
+    LB = SB = 0b000
+    LH = SH = 0b001
+    LW = SW = 0b010
     LBU = 0b100
     LHU = 0b101
 
@@ -331,11 +331,17 @@ def step() -> bool:
         # S type
         rs1 = gibi(19, 15)
         rs2 = gibi(24, 20)
-        funct3 = gibi(14, 12)
+        funct3 = Funct3(gibi(14, 12))
         imm_s = sign_extend(((gibi(31, 25) << 5) | gibi(11, 7)), 12)
-        addr = rs1 + imm_s
+        addr = regfile[rs1] + imm_s
         value = regfile[rs2]
-        print("STORE %8x = %x" % (addr, value))
+        # print("STORE %8x = %x + %x" % (addr, imm_s, rs1))
+        if funct3 == Funct3.SB:
+            ws(struct.pack("<B", value & 0xFF), addr)
+        if funct3 == Funct3.SH:
+            ws(struct.pack("<H", value & 0xFFFF), addr)
+        if funct3 == Funct3.SW:
+            ws(struct.pack("<I", value & 0xFFFFFFFF), addr)
 
     elif opcode == Ops.OP:
         # R-type
@@ -367,7 +373,7 @@ if __name__ == "__main__":
         if x.endswith(".dump"):
             continue
         # ignore non arethmetic ops
-        if "-sw" in x or "-sh" in x or "-sb" in x or "fence_i" in x:
+        if "fence_i" in x:
             continue
         with open(x, 'rb') as f:
             print("test", x)

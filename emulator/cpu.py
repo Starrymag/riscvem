@@ -1,3 +1,5 @@
+from os import register_at_fork
+import re
 import struct
 import glob
 from elftools.elf.elffile import ELFFile
@@ -31,24 +33,32 @@ class Regfile:
         self.regs[key] = value & 0xFFFFFFFF
 
 
+# create register file
 regfile = Regfile()
 
 
-# all opcodes of rv32i
+def reset():
+    global regfile, memory
+    # 64K at 0x80000000
+    memory = b'\x00' * 0x10000
+    regfile = Regfile()
+
+
+# all opcodes of rv32ui
 class Ops(Enum):
-    LUI    = 0b0110111  # U type
-    AUIPC  = 0b0010111  # U type
-    JAL    = 0b1101111  # J type
-    JALR   = 0b1100111  # I type
+    LUI = 0b0110111  # U type
+    AUIPC = 0b0010111  # U type
+    JAL = 0b1101111  # J type
+    JALR = 0b1100111  # I type
 
-    BRANCH = 0b1100011  # B type 
-    LOAD   = 0b0000011  # also I type, but load
-    STORE  = 0b0100011  # S type
+    BRANCH = 0b1100011  # B type
+    LOAD = 0b0000011  # also I type, but load
+    STORE = 0b0100011  # S type
 
-    IMM    = 0b0010011  # I type
-    OP     = 0b0110011  # R type
+    IMM = 0b0010011  # I type
+    OP = 0b0110011  # R type
 
-    MISC  = 0b0001111   # 
+    MISC = 0b0001111
     SYSTEM = 0b1110011  # also I type
 
 
@@ -89,7 +99,7 @@ class Funct7(Enum):
 # write segment
 def ws(dat: bytes, addr: int) -> None:
     global memory
-    print(hex(addr), len(dat))
+    # print(hex(addr), len(dat))
     addr -= 0x80000000
     assert addr >= 0 and addr < len(memory)
     memory = memory[:addr] + dat + memory[addr+len(dat):]
@@ -125,6 +135,31 @@ def sign_extend(num: int, length: int) -> int:
         return num
 
 
+def arithmetic(x: int, y: int, funct3: Funct3, rev=0) -> int:
+    if funct3 == Funct3.ADDI:
+        return x + y
+    elif funct3 == Funct3.SRLI:
+        y &= 0x1f
+        # SRAI
+        if rev:
+            sign_bit = x >> 31
+            res = x >> y
+            res = (0xFFFFFFFF * sign_bit) << (32 - y) | res
+            return res
+        else:
+            return x >> y
+    elif funct3 == Funct3.SLLI:
+        return x << (y&0x1f)
+    elif funct3 == Funct3.ORI:
+        return x | y
+    elif funct3 == Funct3.ANDI:
+        return x & y
+    elif funct3 == Funct3.XORI:
+        return x ^ y
+    else:
+        raise Exception("write %r" % funct3)
+
+
 # execute one cpu cycle
 def step() -> bool:
     # fetch instruction
@@ -140,7 +175,10 @@ def step() -> bool:
 
     # Instruction decode
     opcode = Ops(gibi(6, 0))
-    print("%x %8x %r" % (regfile[PC], ins, opcode))
+
+    # print("%x %8x %r" % (regfile[PC], ins, opcode))
+    # dump()
+
     # execute
     if opcode == Ops.JAL:
         # J-type instruction
@@ -170,16 +208,10 @@ def step() -> bool:
         rd = gibi(11, 7)
         rs1 = gibi(19, 15)
         imm_i = sign_extend(gibi(31, 20), 12)
-        if funct3 == Funct3.ADDI:
-            regfile[rd] = regfile[rs1] + imm_i
-        elif funct3 == Funct3.SLLI:
-            regfile[rd] = regfile[rs1] << imm_i
-        elif funct3 == Funct3.SRLI:
-            regfile[rd] = regfile[rs1] >> imm_i
-        elif funct3 == Funct3.ORI:
-            regfile[rd] = regfile[rs1] | imm_i
-        else:
-            raise Exception("write %r" % funct3)
+        funct7 = gibi(31, 25)
+        # for SRAI
+        rev = funct7 == 0b0100000
+        regfile[rd] = arithmetic(regfile[rs1], imm_i, funct3, rev)
         regfile[PC] += 4
         return True
 
@@ -210,18 +242,23 @@ def step() -> bool:
         rs1 = gibi(19, 15)
         csr = gibi(31, 20)
         if funct3 == Funct3.CSRRW:
-            print("CSRRW", regfile[3], csr)
+            # print("CSRRW", regfile[3], csr)
+            pass
         if funct3 == Funct3.CSRRC:
-            print("CSRRC", regfile[3], csr)
+            # print("CSRRC", regfile[3], csr)
+            pass
 
         elif funct3 == Funct3.ECALL:
             print("ecall", regfile[3], csr)
             if regfile[regnames.index("a7")] == 93:
                 if regfile[regnames.index("a0")] == 0:
-                    print("Test passes")
+                    print("Test passed")
                     return False
                 else:
-                    raise Exception("ERROR IN TEST")
+                    raise Exception("ERROR IN TEST - %d" % regfile[regnames.index("gp")])
+            else:
+                pass
+                # raise Exception("Unknown SYSCALL")
         else:
             # raise Exception("more CSRs funct3: %r - %s" % (funct3, bin(funct3.value)))
             pass
@@ -303,19 +340,20 @@ def out_section(filename, elf):
 
 
 if __name__ == "__main__":
-    for x in glob.glob("riscv-tests/isa/rv32ui-p-add"):
+    for x in glob.glob("riscv-tests/isa/rv32ui-p-*"):
+        reset()
         if x.endswith(".dump"):
             continue
         with open(x, 'rb') as f:
             print("test", x)
-            print("LOADED SEGMENTS:")
+            # print("LOADED SEGMENTS:")
             e = ELFFile(f)
             for s in e.iter_segments():
                 # PAY ATTENTION ON PT_LOAD
                 if s.header.p_type == 'PT_LOAD':
                     ws(s.data(), s.header.p_paddr)
             regfile[PC] = 0x80000000
-            print("\nSTART SIMULATING")
+            # print("\nSTART SIMULATING")
             while step():
                 pass
-            break
+            # break

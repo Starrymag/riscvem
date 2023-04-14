@@ -135,25 +135,38 @@ def sign_extend(num: int, length: int) -> int:
 
 def arithmetic(x: int, y: int, funct3: Funct3, rev=0) -> int:
     if funct3 == Funct3.ADDI:
-        return x + y
+        if rev:
+            # SUB
+            return x - y
+        else:
+            return x + y
     elif funct3 == Funct3.SRLI:
         y &= 0x1f
-        # SRAI
         if rev:
+            # SRAI
             sign_bit = x >> 31
             res = x >> y
-            res = (0xFFFFFFFF * sign_bit) << (32 - y) | res
+            res = res | (0xFFFFFFFF * sign_bit) << (32 - y)
             return res
         else:
             return x >> y
     elif funct3 == Funct3.SLLI:
-        return x << (y&0x1f)
+        y &= 0x1f
+        return x << y
     elif funct3 == Funct3.ORI:
         return x | y
     elif funct3 == Funct3.ANDI:
         return x & y
     elif funct3 == Funct3.XORI:
         return x ^ y
+    elif funct3 == Funct3.SLT:
+        y &= 0xFFFFFFFF
+        x &= 0xFFFFFFFF
+        return int(sign_extend(x, 32) < sign_extend(y, 32))
+    elif funct3 == Funct3.SLTU:
+        y &= 0xFFFFFFFF
+        x &= 0xFFFFFFFF
+        return int(x < y)
     else:
         raise Exception("write %r" % funct3)
 
@@ -247,13 +260,13 @@ def step() -> bool:
             pass
 
         elif funct3 == Funct3.ECALL:
-            print("ecall", regfile[3], csr)
+            print("ecall", regfile[3])
             if regfile[regnames.index("a7")] == 93:
                 if regfile[regnames.index("a0")] == 0:
                     print("Test passed")
                     return False
                 else:
-                    raise Exception("ERROR IN TEST - %d" % regfile[regnames.index("gp")])
+                    raise Exception("ERROR IN TEST - %d" % regfile[3])
             else:
                 pass
                 # raise Exception("Unknown SYSCALL")
@@ -315,13 +328,9 @@ def step() -> bool:
         rs1 = gibi(19, 15)
         rs2 = gibi(24, 20)
         funct3 = Funct3(gibi(14, 12))
-        funct7 = Funct7(gibi(31, 25))
-        if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
-            regfile[rd] = regfile[rs1] + regfile[rs2]
-        elif funct3 == Funct3.OR and funct7 == Funct7.OR:
-            regfile[rd] = regfile[rs1] | regfile[rs2]
-        else:
-            raise Exception("wirte funct3 %r, funct7 %r" % (funct3, funct7))
+        funct7 = gibi(31, 25)
+        rev = funct7 == 0b0100000
+        regfile[rd] = arithmetic(regfile[rs1], regfile[rs2], funct3, rev)
     else:
         dump()
         raise Exception("unknown opcode: %r" % opcode)
@@ -341,6 +350,9 @@ if __name__ == "__main__":
     for x in glob.glob("riscv-tests/isa/rv32ui-p-*"):
         reset()
         if x.endswith(".dump"):
+            continue
+        # ignore non arethmetic ops
+        if "-lbu" in x or "-lh" in x or "-lw" in x or "-sw" in x or "-sh" in x or "-lb" in x or "-sb" in x or "fence_i" in x:
             continue
         with open(x, 'rb') as f:
             print("test", x)

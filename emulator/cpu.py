@@ -79,6 +79,12 @@ class Funct3(Enum):
     BLTU = 0b110
     BGEU = 0b111
 
+    LB = 0b000
+    LH = 0b001
+    LW = 0b010
+    LBU = 0b100
+    LHU = 0b101
+
     ECALL = 0b000
     CSRRW = 0b001
     CSRRS = 0b010
@@ -104,7 +110,7 @@ def ws(dat: bytes, addr: int) -> None:
 
 
 # parse 32 bit instruction
-def r32(addr: int) -> tuple:
+def r32(addr: int) -> int:
     global memory
     addr -= 0x80000000
     # check addres validity
@@ -230,7 +236,6 @@ def step() -> bool:
         # U-type of instruction
         rd = gibi(11, 7)
         imm_u = gibi(31, 12)
-        # PAY ATTENTION to bit shift
         imm_u = imm_u << 12
         # print("Dist: x%x IMM: %x" % (rd, imm_u))
         regfile[rd] = regfile[PC] + imm_u
@@ -310,7 +315,17 @@ def step() -> bool:
         funct3 = Funct3(gibi(14, 12))
         imm_i = sign_extend(gibi(31, 20), 12)
         addr = regfile[rs1] + imm_i
-        print("LOAD %8x" % addr)
+        # print("LOAD %8x" % addr)
+        if funct3 == Funct3.LB:
+            regfile[rd] = sign_extend((r32(addr) & 0xFF), 8)
+        elif funct3 == Funct3.LH:
+            regfile[rd] = sign_extend((r32(addr) & 0xFFFF), 16)
+        elif funct3 == Funct3.LW:
+            regfile[rd] = sign_extend((r32(addr) & 0xFFFFFFFF), 32)
+        elif funct3 == Funct3.LBU:
+            regfile[rd] = r32(addr) & 0xFF
+        elif funct3 == Funct3.LHU:
+            regfile[rd] = r32(addr) & 0xFFFF
 
     elif opcode == Ops.STORE:
         # S type
@@ -352,7 +367,7 @@ if __name__ == "__main__":
         if x.endswith(".dump"):
             continue
         # ignore non arethmetic ops
-        if "-lbu" in x or "-lh" in x or "-lw" in x or "-sw" in x or "-sh" in x or "-lb" in x or "-sb" in x or "fence_i" in x:
+        if "-sw" in x or "-sh" in x or "-sb" in x or "fence_i" in x:
             continue
         with open(x, 'rb') as f:
             print("test", x)
